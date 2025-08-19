@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FastAPI WebRTC Call Demo with Authentication</title>
+  <style>
+    body { font-family: sans-serif; }
+    video { width: 320px; margin: 8px; border: 1px solid #aaa; }
+    #videos { margin-top: 20px; }
+    #controls { margin-top: 20px; }
+    #status { color: green; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h2>WebRTC Audio/Video Call Demo (with JWT Login)</h2>
+
+  <!-- Registration -->
+  <div id="registerDiv">
+    <h3>Register</h3>
+    <input id="reg_user" placeholder="Username" />
+    <input id="reg_pass" placeholder="Password" type="password" />
+    <button onclick="register()">Register</button>
+    <div id="registerStatus"></div>
+  </div>
+
+  <!-- Login -->
+  <div id="loginDiv">
+    <h3>Login</h3>
+    <input id="user" placeholder="Username" />
+    <input id="pass" placeholder="Password" type="password" />
+    <button onclick="login()">Login</button>
+    <div id="loginStatus"></div>
+  </div>
+
+  <!-- Room joining and call -->
+  <div id="controls" class="hidden">
+    <input id="room" placeholder="Room name" />
+    <button onclick="joinRoom()" id="joinBtn">Join Room</button>
+    <button onclick="startCall()" id="callBtn" disabled>Start Call</button>
+    <span id="status"></span>
+  </div>
+
+  <!-- Video displays -->
+  <div id="videos" class="hidden">
+    <h4>Local Video</h4>
+    <video id="localVideo" autoplay muted playsinline></video>
+    <h4>Remote Video</h4>
+    <video id="remoteVideo" autoplay playsinline></video>
+  </div>
+
+<script>
+let token = null;
+let ws = null;
+let pc = null;
+let localStream = null;
+
+// ========== Registration ==========
+async function register() {
+    const username = document.getElementById('reg_user').value;
+    const password = document.getElementById('reg_pass').value;
+    if (!username || !password) return;
+
+    // const form = new FormData();
+    // form.append("username", username);
+    // form.append("password", password);
+
+    // let resp = await fetch("http://localhost:8000/register", {
+    //     method: "POST",
+    //     body: form
+    // });
+    let params = new URLSearchParams();
+    params.append("username", username);
+    params.append("password", password);
+
+    let resp = await fetch("http://localhost:8000/register", {
+      method: "POST",
+      body: params,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      }
+    });
+
+    if (resp.ok) {
+        document.getElementById("registerStatus").innerText = "Registration successful! Please login.";
+    } else {
+        let data = await resp.json();
+        document.getElementById("registerStatus").innerText = "Error: " + data.detail;
+    }
+}
+
+// ========== Login ==========
+async function login() {
+    const username = document.getElementById('user').value;
+    const password = document.getElementById('pass').value;
+    if (!username || !password) return;
+
+    const form = new FormData();
+    form.append("username", username);
+    form.append("password", password);
+
+    let resp = await fetch("http://localhost:8000/token", {
+        method: "POST",
+        body: form
+    });
+    if (resp.ok) {
+        const data = await resp.json();
+        token = data.access_token;
+        document.getElementById("loginStatus").innerText = "Login OK. Now join a room.";
+        document.getElementById("loginDiv").classList.add("hidden");
+        document.getElementById("registerDiv").classList.add("hidden");
+        document.getElementById("controls").classList.remove("hidden");
+    } else {
+        document.getElementById("loginStatus").innerText = "Login failed.";
+    }
+}
+
+// ========== Room Join (WebSocket Connect) ==========
+function joinRoom() {
+    const room = document.getElementById("room").value;
+    if (!room) return alert("Enter a room name");
+    if (!token) return alert("You must login first.");
+
+    // WebSocket connection with JWT token
+    ws = new WebSocket(`ws://localhost:8000/ws/${room}?token=${token}`);
+    ws.onopen = function() {
+        setStatus("Connected to room: " + room);
+        document.getElementById("callBtn").disabled = false;
+    };
+    ws.onerror = function() {
+        setStatus("WebSocket error", true);
+    };
+    ws.onclose = function() {
+        setStatus("WebSocket closed", true);
+    };
+    ws.onmessage = async function(event) {
+        let msg = {};
+        try {
+            msg = JSON.parse(event.data);
+        } catch {
+            // fallback for plain strings
+            msg = event.data;
+        }
+        if (msg.sdp) {
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+            if (msg.sdp.type === "offer") {
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                ws.send(JSON.stringify({sdp: pc.localDescription}));
+            }
+        } else if (msg.candidate) {
+            try {
+                await pc.addIceCandidate(msg.candidate);
+            } catch (err) {
+                console.error("Error adding ICE candidate", err);
+            }
+        }
+    };
+}
+
+function setStatus(text, error=false) {
+    const status = document.getElementById("status");
+    status.innerText = text;
+    status.style.color = error ? "red" : "green";
+}
+
+// ========== WebRTC Call Setup ==========
+async function startCall() {
+    document.getElementById("videos").classList.remove("hidden");
+
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
+        document.getElementById('localVideo').srcObject = localStream;
+    } catch(err) {
+        setStatus("Camera/mic error: " + err, true);
+        return;
+    }
+
+    pc = new RTCPeerConnection();
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    pc.onicecandidate = (event) => {
+        if (event.candidate && ws.readyState === 1) {
+            ws.send(JSON.stringify({candidate: event.candidate}));
+        }
+    };
+    pc.ontrack = (event) => {
+        document.getElementById('remoteVideo').srcObject = event.streams[0];
+    };
+
+    // Create and send offer as "caller"
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    ws.send(JSON.stringify({sdp: pc.localDescription}));
+    setStatus("Sent offer, waiting for answer...");
+}
+</script>
+</body>
+</html>
