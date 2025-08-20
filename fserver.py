@@ -1,5 +1,4 @@
 import os
-from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
@@ -9,8 +8,7 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from fastapi.middleware.cors import CORSMiddleware
 
-load_dotenv()
-SECRET_KEY = os.getenv("SECRET_KEY", "a-very-secret-key")
+SECRET_KEY =  "a-very-secret-key"  # Use a secure key in production
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
