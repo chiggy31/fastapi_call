@@ -1,18 +1,33 @@
-# main.py
+import os
+from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.staticfiles import StaticFiles
 from typing import Dict, List
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
+from fastapi.middleware.cors import CORSMiddleware
 
-SECRET_KEY = "a-very-secret-key"  # Use a secure key in production
+load_dotenv()
+SECRET_KEY = os.getenv("SECRET_KEY", "a-very-secret-key")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 app = FastAPI()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# Mount static files
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Restrict to your front-end URL in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Dummy in-memory user store
 fake_users_db = {}  # username: {username, hashed_password}
@@ -36,8 +51,6 @@ def decode_token(token: str):
     except JWTError:
         return None
 
-# --- API Endpoints for Registration and Login ---
-
 @app.post("/register")
 async def register(form_data: OAuth2PasswordRequestForm = Depends()):
     if form_data.username in fake_users_db:
@@ -58,8 +71,6 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     return {"access_token": access_token, "token_type": "bearer"}
-
-# --- WebSocket Signaling with JWT Authentication ---
 
 class ConnectionManager:
     def __init__(self):
@@ -83,7 +94,6 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# Dependency to authenticate via JWT for WebSocket
 async def get_current_user_from_token(websocket: WebSocket):
     token = websocket.query_params.get("token")
     if not token:
@@ -97,13 +107,18 @@ async def get_current_user_from_token(websocket: WebSocket):
 
 @app.websocket("/ws/{room}")
 async def websocket_endpoint(websocket: WebSocket, room: str):
-    # Authenticate
     try:
         username = await get_current_user_from_token(websocket)
     except Exception:
         return
     await manager.connect(room, websocket)
     try:
+        while True:
+            data = await websocket.receive_text()
+            await manager.send_to_others(room, data, websocket)
+    except WebSocketDisconnect:
+        manager.disconnect(room, websocket)
+        try:
         while True:
             data = await websocket.receive_text()
             await manager.send_to_others(room, data, websocket)
@@ -118,4 +133,3 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
