@@ -118,12 +118,6 @@ async def websocket_endpoint(websocket: WebSocket, room: str):
             await manager.send_to_others(room, data, websocket)
     except WebSocketDisconnect:
         manager.disconnect(room, websocket)
-        try:
-        while True:
-            data = await websocket.receive_text()
-            await manager.send_to_others(room, data, websocket)
-    except WebSocketDisconnect:
-        manager.disconnect(room, websocket)
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
