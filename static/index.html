@@ -72,7 +72,7 @@ async function register() {
     params.append("username", username);
     params.append("password", password);
 
-    let resp = await fetch("http://localhost:8000/register", {
+    let resp = await fetch("https://hacktech-v34m.onrender.com//register", {
       method: "POST",
       body: params,
       headers: {
