@@ -2,6 +2,7 @@ import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from typing import Dict, List
 from jose import jwt, JWTError
 from passlib.context import CryptContext
