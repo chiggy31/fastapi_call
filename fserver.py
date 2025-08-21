@@ -49,6 +49,10 @@ def decode_token(token: str):
     except JWTError:
         return None
 
+@app.get("/")
+async def root():
+    return FileResponse("static/index.html")
+
 @app.post("/register")
 async def register(form_data: OAuth2PasswordRequestForm = Depends()):
     if form_data.username in fake_users_db:
@@ -117,11 +121,3 @@ async def websocket_endpoint(websocket: WebSocket, room: str):
     except WebSocketDisconnect:
         manager.disconnect(room, websocket)
 from fastapi.middleware.cors import CORSMiddleware
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
