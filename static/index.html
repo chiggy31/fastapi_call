@@ -53,38 +53,34 @@ let token = null;
 let ws = null;
 let pc = null;
 let localStream = null;
+const BASE_URL = window.location.origin; // Dynamically use current origin (Render or localhost)
 
 // ========== Registration ==========
 async function register() {
     const username = document.getElementById('reg_user').value;
     const password = document.getElementById('reg_pass').value;
-    if (!username || !password) return;
+    if (!username || !password) {
+        document.getElementById("registerStatus").innerText = "Please enter username and password";
+        return;
+    }
 
-    // const form = new FormData();
-    // form.append("username", username);
-    // form.append("password", password);
+    const form = new FormData();
+    form.append("username", username);
+    form.append("password", password);
 
-    // let resp = await fetch("http://localhost:8000/register", {
-    //     method: "POST",
-    //     body: form
-    // });
-    let params = new URLSearchParams();
-    params.append("username", username);
-    params.append("password", password);
-
-    let resp = await fetch("https://hacktech-v34m.onrender.com//register", {
-      method: "POST",
-      body: params,
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      }
-    });
-
-    if (resp.ok) {
-        document.getElementById("registerStatus").innerText = "Registration successful! Please login.";
-    } else {
-        let data = await resp.json();
-        document.getElementById("registerStatus").innerText = "Error: " + data.detail;
+    try {
+        const resp = await fetch(`${BASE_URL}/register`, {
+            method: "POST",
+            body: form
+        });
+        if (resp.ok) {
+            document.getElementById("registerStatus").innerText = "Registration successful! Please login.";
+        } else {
+            const data = await resp.json();
+            document.getElementById("registerStatus").innerText = "Error: " + data.detail;
+        }
+    } catch (error) {
+        document.getElementById("registerStatus").innerText = "Request failed: " + error.message;
     }
 }
 
@@ -92,25 +88,33 @@ async function register() {
 async function login() {
     const username = document.getElementById('user').value;
     const password = document.getElementById('pass').value;
-    if (!username || !password) return;
+    if (!username || !password) {
+        document.getElementById("loginStatus").innerText = "Please enter username and password";
+        return;
+    }
 
     const form = new FormData();
     form.append("username", username);
     form.append("password", password);
 
-    let resp = await fetch("http://localhost:8000/token", {
-        method: "POST",
-        body: form
-    });
-    if (resp.ok) {
-        const data = await resp.json();
-        token = data.access_token;
-        document.getElementById("loginStatus").innerText = "Login OK. Now join a room.";
-        document.getElementById("loginDiv").classList.add("hidden");
-        document.getElementById("registerDiv").classList.add("hidden");
-        document.getElementById("controls").classList.remove("hidden");
-    } else {
-        document.getElementById("loginStatus").innerText = "Login failed.";
+    try {
+        const resp = await fetch(`${BASE_URL}/token`, {
+            method: "POST",
+            body: form
+        });
+        if (resp.ok) {
+            const data = await resp.json();
+            token = data.access_token;
+            document.getElementById("loginStatus").innerText = "Login OK. Now join a room.";
+            document.getElementById("loginDiv").classList.add("hidden");
+            document.getElementById("registerDiv").classList.add("hidden");
+            document.getElementById("controls").classList.remove("hidden");
+        } else {
+            const data = await resp.json();
+            document.getElementById("loginStatus").innerText = "Error: " + data.detail;
+        }
+    } catch (error) {
+        document.getElementById("loginStatus").innerText = "Request failed: " + error.message;
     }
 }
 
@@ -120,8 +124,9 @@ function joinRoom() {
     if (!room) return alert("Enter a room name");
     if (!token) return alert("You must login first.");
 
-    // WebSocket connection with JWT token
-    ws = new WebSocket(`ws://localhost:8000/ws/${room}?token=${token}`);
+    // Use wss:// for Render, ws:// for localhost
+    const wsProtocol = window.location.protocol === "https:" ? "wss://" : "ws://";
+    ws = new WebSocket(`${wsProtocol}${window.location.host}/ws/${room}?token=${token}`);
     ws.onopen = function() {
         setStatus("Connected to room: " + room);
         document.getElementById("callBtn").disabled = false;
@@ -137,7 +142,6 @@ function joinRoom() {
         try {
             msg = JSON.parse(event.data);
         } catch {
-            // fallback for plain strings
             msg = event.data;
         }
         if (msg.sdp) {
@@ -168,7 +172,7 @@ async function startCall() {
     document.getElementById("videos").classList.remove("hidden");
 
     try {
-        localStream = await navigator.mediaDevices.getUserMedia({video:true, audio:true});
+        localStream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
         document.getElementById('localVideo').srcObject = localStream;
     } catch(err) {
         setStatus("Camera/mic error: " + err, true);
@@ -178,7 +182,7 @@ async function startCall() {
     pc = new RTCPeerConnection();
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
     pc.onicecandidate = (event) => {
-        if (event.candidate && ws.readyState === 1) {
+        if (event.candidate && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({candidate: event.candidate}));
         }
     };
@@ -186,7 +190,6 @@ async function startCall() {
         document.getElementById('remoteVideo').srcObject = event.streams[0];
     };
 
-    // Create and send offer as "caller"
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     ws.send(JSON.stringify({sdp: pc.localDescription}));

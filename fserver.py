@@ -17,11 +17,11 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Mount static files
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
-
+app.mount("/static", StaticFiles(directory="static", html=True), name="static")
+# CORS middleware to allow cross-origin requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict to your front-end URL in production
+    allow_origins=["https://hacktech-v34m.onrender.com"],  # Restrict to your front-end URL in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
